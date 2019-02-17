@@ -1,0 +1,216 @@
+#!/usr/bin/env python3
+
+import time
+import readline
+import random
+import terminaltables
+import subprocess
+import threading
+import os
+
+from classes import *
+
+readline.parse_and_bind("tab: complete")
+readline.set_completer_delims('')
+
+AGENTTYPES=['plain_rev','agent_rev'] #,'encrypt_agent_rev'] # If someting is added here, change addSession()
+SESSIONS={'0':"main"} # Zero session is the main console
+SID=0                 # Session counter, set to zero
+
+# Environment vars
+ENV={'LHOST':'',
+    'LPORT':'4444',
+    'SESSION':'0',
+    'TYPE':'agent_rev',
+    'LAG':'0.1' # Use lower values in faster connections
+    }
+
+# C2 Functions
+def prWelcome():     
+    banner='''
+ ██▓    ▄▄▄       ███▄    █ ▓█████▄  ██▀███ ▓██   ██▓
+▓██▒   ▒████▄     ██ ▀█   █ ▒██▀ ██▌▓██ ▒ ██▒▒██  ██▒
+▒██░   ▒██  ▀█▄  ▓██  ▀█ ██▒░██   █▌▓██ ░▄█ ▒ ▒██ ██░
+▒██░   ░██▄▄▄▄██ ▓██▒  ▐▌██▒░▓█▄   ▌▒██▀▀█▄   ░ ▐██▓░
+░██████▒▓█   ▓██▒▒██░   ▓██░░▒████▓ ░██▓ ▒██▒ ░ ██▒▓░
+░ ▒░▓  ░▒▒   ▓▒█░░ ▒░   ▒ ▒  ▒▒▓  ▒ ░ ▒▓ ░▒▓░  ██▒▒▒ 
+░ ░ ▒  ░ ▒   ▒▒ ░░ ░░   ░ ▒░ ░ ▒  ▒   ░▒ ░ ▒░▓██ ░▒░ 
+  ░ ░    ░   ▒      ░   ░ ░  ░ ░  ░   ░░   ░ ▒ ▒ ░░  
+    ░  ░     ░  ░         ░    ░       ░     ░ ░     
+                             ░           C&C ░ ░ v.00   
+                    https://github.com/ompamo/plandry
+    '''
+    os.system("clear")
+    print(banner)
+
+def setVar(var,value):    
+    global ENV
+    global SESSIONS
+    #check that session is not bigger than the number of sessions
+    #or is false
+    if var=="SESSION":
+        if int(value)>(len(SESSIONS)-1) or SESSIONS[value]==False:
+            Msg.warn("Session doesn't exist or is no longer valid!")
+            return
+    
+    #check that it's not a new var, just allow change existing ones
+    if not var in ENV:
+        Msg.warn("VAR doesn't exist!")
+        showOptions("OPTIONS",ENV,SESSIONS)
+    ENV[var]=value
+
+def addSession():
+    global SID
+    global ENV
+    global SESSIONS
+
+    Msg.info("Adding new session...")
+# Here we need to know the session type:
+    if ENV['TYPE'] in AGENTTYPES:
+        SID+=1
+        sSID=str(SID)
+        if ENV['TYPE']=="plain_rev":
+            SESSIONS[sSID]=ReverseConnectionHandler(ENV['LHOST'],int(ENV['LPORT']))
+        elif ENV['TYPE']=="agent_rev":
+            #SESSIONS[sSID]=AgentReverseHandler(ENV['LHOST'],int(ENV['LPORT']))
+            Msg.warn("Not implemented yet")
+        #elif ENV['TYPE']=="encrypt_agent_rev":
+        #    SESSIONS[sSID]=GudariHandler(ENV['LHOST'],int(ENV['LPORT']))       
+        
+        if SESSIONS[sSID].connect():
+            ENV['SESSION']=sSID
+        else:
+            Msg.err("Conection Failed!")
+            SESSIONS[sSID]=False
+    else: Msg.warn("Bad Agent Type!")
+    return SID
+
+def delSession(s):
+    ENV['SESSION']='0'
+    SESSIONS[s].disconnect()
+    SESSIONS[s]=False
+
+def closeAllSessions():
+    global SESSIONS
+    for s in SESSIONS:
+        if 'classes' in str(type(SESSIONS[s])):
+            delSession(s)
+            time.sleep(float(ENV['LAG']))
+
+def showOptions(options):
+    global ENV
+    global SESSIONS
+    data=[]
+    if options=="OPTIONS" or options=="OPT":        
+        title = "SHOW OPTIONS"
+        for n in ENV:
+            data.append([n, ENV[n]])
+    
+    elif options=="SESSIONS" or options=="SES": 
+        s=[]
+        title = "SHOW REMOTE SESSIONS"
+        for n in SESSIONS:
+            if SESSIONS[n]!=False and n!='0':                
+                s.append(n)
+        if len(s)>0:
+            for n in s:
+                data.append([n,SESSIONS[n].RHOST,SESSIONS[n].LPORT,SESSIONS[n].TYPE])
+        else:
+            Msg.warn("NO SESSIONS AVAILABLE")
+            return    
+    else:
+        Msg.warn("Not implemented Allowed: SESSIONS or OPTIONS")
+        return
+    printTable(data, title)
+    
+def printTable(data, title):
+    table = terminaltables.SingleTable(data)
+    table.title = title
+    table.inner_row_border = True
+    print ()
+    print(table.table)
+    print()
+
+def completerOptions():
+    w=[]
+    w.append("exit")
+    w.append("quit")
+    w.append("run")
+    w.append("show sessions")
+    w.append("show options")
+    for x in ENV: 
+        w.append("set %s" % x.lower())    
+    for s in SESSIONS: 
+        if SESSIONS[s]!=False: 
+            w.append("set session %s" % s)
+            w.append("kill %s" % s)
+    for t in AGENTTYPES:  w.append("set type %s" % t)
+    w.remove("set session")
+    w.remove("set type")
+    w.remove("kill 0")
+    return w
+
+def consoleMain():
+    global SID
+    global ENV
+    if ENV['SESSION']=='0':        
+        readline.set_completer(MyCompleter(completerOptions()).complete)
+
+        uinput = input("#0 > ")
+        opts = uinput.split()
+        action = opts[0].upper()
+
+        if action=="SET":
+            var = opts[1].upper()
+            setVar(var, opts[2])
+
+        elif action=="EXIT" or action=="QUIT":         
+            closeAllSessions()
+            exit()
+
+        elif action=="SHOW":
+            var = opts[1].upper()
+            showOptions(var)
+            
+        elif action=="RUN":
+            SID=addSession()
+            time.sleep(float(ENV['LAG']))
+        
+        elif action=="KILL":
+            delSession(opts[1])
+            time.sleep(float(ENV['LAG']))
+        
+        #elif action=="EXECALL":
+        #    Msg.dbg("Exec ALL NOT IMPLEMENTED")
+        
+        #elif action=="HELP": mainHelper()
+        else: Msg.err("Command not implemented")
+
+    else:
+          SESSIONS[ENV['SESSION']].interact()
+          ENV['SESSION']='0'
+
+
+# Starting execution
+prWelcome()
+#Populating ip address
+ip=subprocess.getoutput("ifconfig eth0 | sed -n 2p | awk '{print $2}'") #thanks to Jari
+if not "error" in ip: ENV['LHOST'] = ip
+
+while True:    
+    try:
+        #Need to control SESSION is an instance          
+        if ENV['SESSION']!='0' and 'classes' not in str(type(SESSIONS[ENV['SESSION']])): 
+            Msg.warn("Invalid session. Switching to main...")
+            ENV['SESSION']='0'
+        consoleMain() 
+
+    except KeyboardInterrupt:
+        print()
+        Msg.warn("Ctr+C detected!")
+        Msg.warn("Closing all connections...")
+        closeAllSessions()
+        break
+    except Exception as e:  #Disabling this exception will help debugging
+        Msg.dbg(str(e))     #But breaks quite thing on small bugs
+exit(0)
