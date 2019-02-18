@@ -1,2 +1,3 @@
 # plandry
-Bot and C2C for learning pruporses
+Agent and C2C for learning pruporses
+

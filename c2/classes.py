@@ -2,6 +2,7 @@ import socket
 import threading
 import sys
 import time, select
+import readline
 
 #Class to manage console messages
 class Msg:
@@ -20,7 +21,7 @@ class Msg:
     def dbg(m):
         print("dbg >>> {0:s}".format(str(m)))
 
-#Auto-completion
+#Auto-completion aid class
 class MyCompleter(object):  # Custom completer
 
     def __init__(self, options):
@@ -46,19 +47,31 @@ class ConnectionHandler:
     RPORT=""
     CONN=False
     LAG=0
-    PROMPT=""
+    PROMPT=" "
 
     def setLAG(self,lag):
         self.LAG=float(lag)
+    
+    def interact(self):
+        readline.parse_and_bind("tab: self-insert")
+        try:
+            while self.CONN!=False:
+                uinput=input(self.PROMPT)+"\n"
+                self.SOCK.send(uinput.encode())
+                time.sleep(self.LAG)
+        except KeyboardInterrupt:
+            Msg.info("Returning back to main console")
 
     def sktRecv(self):
         try:
             while self.CONN:
                 data = self.SOCK.recv(1024)
                 if not data:
-                    Msg.err("Port: {0:d} Session terminated".format(self.LPORT))
+                    Msg.warn("Port: {0:d} Session terminated".format(self.LPORT))
+                    self.CONN=False
                     return
-                print(str(data.decode(errors='ignore')))
+                print(str(data.decode(errors='ignore')),end='')
+                #print(' ',end='')
                 sys.stdout.flush()
         except KeyboardInterrupt:
             return
@@ -78,16 +91,6 @@ class ConnectionHandler:
             self.SOCK.close()            
         except:
             Msg.warn("Socket already closed!")
-    
-    def interact(self):
-        try:
-            while True:
-                uinput=input(self.PROMPT)+"\n"
-                self.SOCK.send(uinput.encode())
-                time.sleep(self.LAG)
-        except KeyboardInterrupt:
-            Msg.info("Returning back to main console")
-
 
 class ReverseConnectionHandler(ConnectionHandler):
     LHOST=""
@@ -96,7 +99,12 @@ class ReverseConnectionHandler(ConnectionHandler):
 
     def __init__(self,lhost,lport):
         self.LHOST="0.0.0.0" # By default listens in all interfaces
+        self.LPORT=int(lport)   
+    
+    def __init__(self,lhost,lport,lag):
+        self.LHOST="0.0.0.0" # By default listens in all interfaces
         self.LPORT=int(lport)
+        self.LAG=float(lag)
 
     def connect(self):
         try:
@@ -120,3 +128,6 @@ class ReverseConnectionHandler(ConnectionHandler):
             Msg.err("Connection Error")
             return False
         
+class AgentReverseHandler(ReverseConnectionHandler):
+    TYPE="agent_rev"
+    

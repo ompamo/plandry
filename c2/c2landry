@@ -10,9 +10,6 @@ import os
 
 from classes import *
 
-readline.parse_and_bind("tab: complete")
-readline.set_completer_delims('')
-
 AGENTTYPES=['plain_rev','agent_rev'] #,'encrypt_agent_rev'] # If someting is added here, change addSession()
 SESSIONS={'0':"main"} # Zero session is the main console
 SID=0                 # Session counter, set to zero
@@ -70,12 +67,11 @@ def addSession():
         SID+=1
         sSID=str(SID)
         if ENV['TYPE']=="plain_rev":
-            SESSIONS[sSID]=ReverseConnectionHandler(ENV['LHOST'],int(ENV['LPORT']))
+            SESSIONS[sSID]=ReverseConnectionHandler(ENV['LHOST'],int(ENV['LPORT']),float(ENV['LAG']))
         elif ENV['TYPE']=="agent_rev":
-            #SESSIONS[sSID]=AgentReverseHandler(ENV['LHOST'],int(ENV['LPORT']))
-            Msg.warn("Not implemented yet")
+            SESSIONS[sSID]=AgentReverseHandler(ENV['LHOST'],int(ENV['LPORT']),float(ENV['LAG']))
         #elif ENV['TYPE']=="encrypt_agent_rev":
-        #    SESSIONS[sSID]=GudariHandler(ENV['LHOST'],int(ENV['LPORT']))       
+        #    SESSIONS[sSID]=EncryptedAgentReverseHandler(ENV['LHOST'],int(ENV['LPORT']))       
         
         if SESSIONS[sSID].connect():
             ENV['SESSION']=sSID
@@ -153,7 +149,9 @@ def completerOptions():
 def consoleMain():
     global SID
     global ENV
-    if ENV['SESSION']=='0':        
+    if ENV['SESSION']=='0':
+        readline.parse_and_bind("tab: complete")
+        readline.set_completer_delims('')
         readline.set_completer(MyCompleter(completerOptions()).complete)
 
         uinput = input("#0 > ")
